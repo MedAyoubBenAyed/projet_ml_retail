@@ -49,8 +49,8 @@ def _build_model_candidates() -> dict[str, object]:
             eval_metric="auc",
             random_state=42,
         )
-    except Exception:
-        pass
+    except ImportError:
+        print("XGBoost not installed: training will continue without xgboost.")
 
     return models
 

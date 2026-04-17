@@ -21,8 +21,10 @@ class ChurnPredictor:
 
     def predict(self, customer_payload: dict) -> dict[str, float | int]:
         """Predict churn class and probability for one customer payload."""
-        if not isinstance(customer_payload, dict) or not customer_payload:
-            raise ValueError("customer_payload must be a non-empty dictionary")
+        if not isinstance(customer_payload, dict):
+            raise ValueError("customer_payload must be a dictionary")
+        if not customer_payload:
+            raise ValueError("customer_payload cannot be empty")
 
         customer_df = pd.DataFrame([customer_payload])
         expected_features = getattr(self.model, "feature_names_in_", None)

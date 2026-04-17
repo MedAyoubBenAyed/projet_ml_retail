@@ -24,7 +24,9 @@ def create_preprocessor(
     Categorical columns: most-frequent imputation -> one-hot encoding.
     """
     if not 0 < pca_variance_threshold <= 1:
-        raise ValueError("pca_variance_threshold must be in (0, 1].")
+        raise ValueError(
+            "pca_variance_threshold must be greater than 0 and less than or equal to 1."
+        )
 
     transformers = []
 
