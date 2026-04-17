@@ -3,3 +3,7 @@ pandas
 matplotlib
 seaborn
 statsmodels
+scikit-learn
+imbalanced-learn
+joblib
+flask
