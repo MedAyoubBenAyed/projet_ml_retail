@@ -1,0 +1,156 @@
+PROJECT RECAP — projet_ml_retail
+
+1) PROJECT PURPOSE
+This repository is an initial machine-learning project focused on retail customer churn analysis.
+The available assets indicate a workflow for:
+- exploring a prepared customer-level dataset,
+- selecting/cleaning features,
+- training a churn model,
+- making predictions,
+- exposing model behavior through an application.
+
+Current state: the practical implementation is mostly not yet coded (several Python files are empty), but the exploration notebook and dataset are present.
+
+
+2) REPOSITORY STRUCTURE
+- README.md
+  - Currently empty.
+- requirements.txt
+  - Declares Python dependencies:
+    - numpy
+    - pandas
+    - matplotlib
+    - seaborn
+    - statsmodels
+- src/
+  - preprocessing.py (empty)
+  - train_model.py (empty)
+  - predict.py (empty)
+  - utils.py (empty)
+- app/
+  - app.py (empty)
+- notebooks/
+  - 01_data_exploration.ipynb (main implemented artifact)
+- data/
+  - raw/retail_customers_COMPLETE_CATEGORICAL.csv (core dataset)
+
+
+3) DATASET SUMMARY
+File: data/raw/retail_customers_COMPLETE_CATEGORICAL.csv
+- Rows: 4372
+- Columns: 52
+- Target variable: Churn (binary label visible in sample rows: 0/1)
+
+Main column groups observed:
+- RFM and transaction behavior:
+  Recency, Frequency, MonetaryTotal, MonetaryAvg, MonetaryStd, MonetaryMin, MonetaryMax,
+  TotalQuantity, AvgQuantityPerTransaction, MinQuantity, MaxQuantity,
+  AvgDaysBetweenPurchases, TotalTransactions, UniqueInvoices, AvgLinesPerInvoice, etc.
+- Product/invoice diversity:
+  UniqueProducts, UniqueDescriptions, ProductDiversity, BasketSizeCategory, etc.
+- Customer profile and account metadata:
+  Age, AgeCategory, Gender, Country, Region, RegistrationDate, AccountStatus,
+  NewsletterSubscribed, LoyaltyLevel, SatisfactionScore, SupportTicketsCount, etc.
+- Categorical business segments:
+  RFMSegment, SpendingCategory, CustomerType, ChurnRiskCategory,
+  FavoriteSeason, PreferredTimeOfDay, WeekendPreference, etc.
+
+Notes from data sample:
+- Mixed numeric and categorical features.
+- Some missing values are present (e.g., Age empty for some customers).
+- Multiple date formats appear in RegistrationDate.
+- Some indicators of returns/cancellations exist (NegativeQuantityCount, CancelledTransactions, ReturnRatio).
+
+
+4) NOTEBOOK SUMMARY (notebooks/01_data_exploration.ipynb)
+The notebook is in French and contains 47 cells. It implements exploratory analysis and feature-reduction steps.
+
+Main logical flow:
+1. Imports: pandas, numpy, matplotlib, seaborn.
+2. Loads dataset from ../data/raw/retail_customers_COMPLETE_CATEGORICAL.csv.
+3. Basic inspection:
+   - head/tail
+   - shape
+   - info and dtypes
+   - missing values checks and percentages
+4. Descriptive statistics:
+   - numeric summary
+   - full summary with categorical features
+5. Correlation analysis on numeric columns:
+   - correlation matrix
+   - heatmap
+   - detection of highly correlated variables (threshold around 0.8)
+6. Correlation-based feature reduction:
+   - identifies columns to drop from upper triangle correlation matrix
+   - creates reduced dataset
+7. VIF-based multicollinearity analysis:
+   - uses statsmodels variance_inflation_factor
+   - keeps numeric predictors and removes infinite/NaN issues before VIF
+8. Additional manual feature drop appears in later cells:
+   - CustomerID
+   - CustomerTenureDays
+   - FirstPurchaseDaysAgo
+
+Interpretation:
+- The notebook is currently the core intelligence of the repository.
+- It documents feature inspection and dimensionality/multicollinearity control before modeling.
+
+
+5) SOURCE CODE STATUS
+The intended production code modules exist but are empty:
+- src/preprocessing.py: expected to hold cleaning, encoding, train/test split, feature engineering.
+- src/train_model.py: expected to train/save churn model.
+- src/predict.py: expected to load model and run inference.
+- src/utils.py: expected to store helper functions (I/O, metrics, serialization, shared constants).
+- app/app.py: expected to provide user-facing interface/API (likely Streamlit/Flask/FastAPI style), but no implementation yet.
+
+So the project is currently at an "EDA and project skeleton" stage rather than a fully operational ML pipeline.
+
+
+6) DEPENDENCIES AND ENVIRONMENT
+Declared dependencies are data-science/analysis focused:
+- numpy, pandas: data processing
+- matplotlib, seaborn: visualization
+- statsmodels: statistical diagnostics (VIF)
+
+No training framework (e.g., scikit-learn, xgboost) is declared in requirements at this time.
+No test framework is declared in the repository configuration.
+
+
+7) TESTING/LINTING STATUS
+At inspection time:
+- `pytest` command not available in environment.
+- `python -m pytest` failed because pytest is not installed.
+- No explicit lint/build/test configuration files were found in repository root.
+
+Conclusion: automated validation tooling is not yet configured in this project.
+
+
+8) WHAT THIS REPOSITORY CURRENTLY PROVIDES TO ANOTHER MODEL
+If you import this project into another model, the model should understand:
+- Domain: retail customer churn prediction.
+- Data asset: one engineered customer dataset with 52 columns and churn label.
+- Existing work: exploratory notebook with missing-value checks, descriptive analysis, correlation filtering, and VIF-based feature selection.
+- Missing work: implemented preprocessing/training/inference/application code and test/CI setup.
+
+
+9) QUICK GAP SUMMARY
+Implemented:
+- Data file
+- EDA notebook and feature-selection exploration
+- Basic project folder skeleton
+
+Not implemented:
+- Executable ML pipeline in src/
+- Model training/inference scripts
+- Application logic in app/
+- README documentation
+- Tests, linting, and CI workflows
+
+
+10) SUGGESTED INTERPRETATION FOR DOWNSTREAM USE
+Treat this repository as:
+- a foundation dataset + analysis notebook,
+- a scaffold for a churn ML project,
+- not yet a production-ready or fully reproducible training/inference system.
+
