@@ -18,6 +18,7 @@ from utils import evaluate_model, save_json, save_model
 DEFAULT_DATA_PATH = Path("data/raw/retail_customers_COMPLETE_CATEGORICAL.csv")
 DEFAULT_MODEL_PATH = Path("models/best_churn_pipeline.joblib")
 DEFAULT_REPORT_PATH = Path("reports/model_metrics.json")
+DEFAULT_SPLIT_DIR = Path("data/train_test")
 
 
 def _build_model_candidates() -> dict[str, object]:
@@ -59,6 +60,7 @@ def train_and_select_best_model(
     dataset_path: str | Path = DEFAULT_DATA_PATH,
     model_output_path: str | Path = DEFAULT_MODEL_PATH,
     report_output_path: str | Path = DEFAULT_REPORT_PATH,
+    split_output_dir: str | Path = DEFAULT_SPLIT_DIR,
     target_column: str = "Churn",
     pca_variance_threshold: float = 0.95,
     test_size: float = 0.2,
@@ -71,8 +73,9 @@ def train_and_select_best_model(
     X = df.drop(columns=[target_column])
     y = df[target_column]
 
-    numerical_features = X.select_dtypes(include=["number"]).columns.tolist()
-    categorical_features = X.select_dtypes(exclude=["number"]).columns.tolist()
+    # Use dynamic routing in preprocessing so engineered columns are retained.
+    numerical_features = None
+    categorical_features = None
 
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -81,6 +84,13 @@ def train_and_select_best_model(
         random_state=42,
         stratify=y,
     )
+
+    split_dir = Path(split_output_dir)
+    split_dir.mkdir(parents=True, exist_ok=True)
+    X_train.to_csv(split_dir / "X_train.csv", index=False)
+    X_test.to_csv(split_dir / "X_test.csv", index=False)
+    y_train.to_frame(name=target_column).to_csv(split_dir / "y_train.csv", index=False)
+    y_test.to_frame(name=target_column).to_csv(split_dir / "y_test.csv", index=False)
 
     model_candidates = _build_model_candidates()
 
@@ -116,6 +126,8 @@ def train_and_select_best_model(
     if best_model is None:
         raise RuntimeError("No model could be trained.")
 
+    Path(model_output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(report_output_path).parent.mkdir(parents=True, exist_ok=True)
     save_model(best_model, model_output_path)
     save_json(
         {
@@ -132,6 +144,11 @@ def train_and_select_best_model(
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train churn models with PCA pipeline")
     parser.add_argument("--data", default=str(DEFAULT_DATA_PATH), help="Input CSV path")
+    parser.add_argument(
+        "--split-output-dir",
+        default=str(DEFAULT_SPLIT_DIR),
+        help="Directory where train/test CSV split files are exported",
+    )
     parser.add_argument(
         "--model-output",
         default=str(DEFAULT_MODEL_PATH),
@@ -158,6 +175,7 @@ def main() -> None:
         dataset_path=args.data,
         model_output_path=args.model_output,
         report_output_path=args.report_output,
+        split_output_dir=args.split_output_dir,
         target_column=args.target,
         pca_variance_threshold=args.pca_variance,
     )
