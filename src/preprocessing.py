@@ -280,6 +280,61 @@ def remove_correlated_features(
 
 
 # ----------------------------------------
+# Suppression des features corrélées à la cible (détection de leakage)
+# ----------------------------------------
+
+def remove_leakage_features(
+    X_train: pd.DataFrame,
+    X_test: pd.DataFrame,
+    y_train: pd.Series,
+    leakage_threshold: float = 0.3,
+) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
+    """
+    Supprime les features numériques qui sont trop corrélées avec la cible.
+    Cela peut indiquer une fuite de données ou une feature trop directement liée au label.
+
+    Parameters
+    ----------
+    X_train           : DataFrame transformé (train)
+    X_test            : DataFrame transformé (test)
+    y_train           : Labels d'entraînement
+    leakage_threshold : seuil de corrélation absolue avec la cible (défaut : 0.3)
+
+    Returns
+    -------
+    X_train_out, X_test_out, liste des colonnes supprimées
+    """
+    numeric_cols = X_train.select_dtypes(
+        include=["int64", "float64", "int32", "float32"]
+    ).columns.tolist()
+
+    if not numeric_cols or len(y_train) == 0:
+        return X_train, X_test, []
+
+    to_drop = []
+    for col in numeric_cols:
+        try:
+            corr = X_train[[col]].corrwith(y_train).iloc[0]
+            if not np.isnan(corr) and abs(corr) > leakage_threshold:
+                to_drop.append(col)
+        except Exception:
+            pass
+
+    X_train_out = X_train.drop(columns=to_drop, errors="ignore")
+    X_test_out = X_test.drop(columns=to_drop, errors="ignore")
+
+    if to_drop:
+        print(
+            f"[Leakage] {len(to_drop)} feature(s) supprimée(s) "
+            f"(corrélation cible > {leakage_threshold}) : {to_drop}"
+        )
+    else:
+        print(f"[Leakage] Aucune fuite détectée (seuil={leakage_threshold}).")
+
+    return X_train_out, X_test_out, to_drop
+
+
+# ----------------------------------------
 # Suppression par VIF (NOUVEAU)
 # ----------------------------------------
 
@@ -287,6 +342,8 @@ def remove_high_vif_features(
     X_train: pd.DataFrame,
     X_test: pd.DataFrame,
     vif_threshold: float = 10.0,
+    max_columns: int = 25,
+    max_iterations: int = 20,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
     """
     Suppression itérative des features avec un VIF (Variance Inflation Factor)
@@ -329,10 +386,25 @@ def remove_high_vif_features(
         print("[VIF] Aucune colonne numérique détectée. Étape VIF ignorée.")
         return X_train, X_test, []
 
+    if len(num_cols) > max_columns:
+        print(
+            f"[VIF] {len(num_cols)} colonnes numériques détectées. "
+            f"Étape VIF ignorée au-delà de {max_columns} colonnes pour garder un temps d'exécution raisonnable."
+        )
+        return X_train, X_test, []
+
     dropped: List[str] = []
     current_cols = num_cols.copy()
+    iterations = 0
 
     while True:
+        iterations += 1
+        if iterations > max_iterations:
+            print(
+                f"[VIF] Arrêt anticipé après {max_iterations} itérations pour limiter le temps de calcul."
+            )
+            break
+
         X_vif = X_train[current_cols].dropna()
 
         if X_vif.shape[1] < 2:
@@ -400,6 +472,8 @@ def split_and_transform(
     random_state: int = RANDOM_STATE,
     corr_threshold: float = 0.90,
     vif_threshold: float = 10.0,
+    enable_vif: bool = False,
+    leakage_threshold: float = 0.3,
 ) -> None:
     """
     Pipeline complet :
@@ -408,13 +482,15 @@ def split_and_transform(
       3. Fit du préprocesseur sklearn sur train uniquement
       4. Transformation train et test
       5. Suppression par corrélation de Pearson  ← NOUVEAU
-      6. Suppression par VIF (multicolinéarité)  ← NOUVEAU
-      7. Sauvegarde des CSVs
+      6. Suppression par VIF (multicolinéarité)  ← optionnelle
+      7. Suppression des features corrélées à la cible (détection leakage) ← NOUVEAU
+      8. Sauvegarde des CSVs
 
     Parameters
     ----------
     corr_threshold : seuil corrélation absolue (défaut 0.90)
     vif_threshold  : seuil VIF (défaut 10.0)
+    leakage_threshold : seuil corrélation cible (défaut 0.3)
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     if processed_path is not None:
@@ -456,9 +532,23 @@ def split_and_transform(
         X_train_df, X_test_df, threshold=corr_threshold
     )
 
-    # Étape 6 : suppression par VIF (NOUVEAU)
-    X_train_df, X_test_df, dropped_vif = remove_high_vif_features(
-        X_train_df, X_test_df, vif_threshold=vif_threshold
+    # Étape 6 : suppression par VIF (optionnelle car coûteuse)
+    if enable_vif:
+        X_train_df, X_test_df, dropped_vif = remove_high_vif_features(
+            X_train_df,
+            X_test_df,
+            vif_threshold=vif_threshold,
+        )
+    else:
+        dropped_vif = []
+        print("[VIF] Étape désactivée par défaut pour réduire le temps d'exécution.")
+
+    # Étape 7 : suppression des features corrélées à la cible (détection leakage)
+    X_train_df, X_test_df, dropped_leakage = remove_leakage_features(
+        X_train_df,
+        X_test_df,
+        y_train,
+        leakage_threshold=leakage_threshold,
     )
 
     print(
@@ -502,6 +592,10 @@ def main() -> None:
                         help="Seuil de corrélation de Pearson absolue (défaut: 0.90)")
     parser.add_argument("--vif-threshold",   type=float, default=10.0,
                         help="Seuil VIF pour la multicolinéarité (défaut: 10.0)")
+    parser.add_argument("--enable-vif", action="store_true",
+                        help="Activer la suppression VIF, plus lente mais optionnelle")
+    parser.add_argument("--leakage-threshold", type=float, default=0.3,
+                        help="Seuil corrélation cible pour détecter les fuites (défaut: 0.3)")
     args = parser.parse_args()
 
     raw_path       = Path(args.raw_path)
@@ -519,6 +613,8 @@ def main() -> None:
         random_state=RANDOM_STATE,
         corr_threshold=args.corr_threshold,
         vif_threshold=args.vif_threshold,
+        enable_vif=args.enable_vif,
+        leakage_threshold=args.leakage_threshold,
     )
 
     print("\nPrétraitement terminé.")

@@ -1,14 +1,9 @@
+# Python
 __pycache__/
-*.py[cod]
+*.pyc
+.venv/
+venv/
+
+# Data and outputs
 models/
 reports/
-venv/
-.venv/
-.pytest_cache/
-.ipynb_checkpoints/
-data/train_test/
-data/processed/
-!models/.gitkeep
-!reports/.gitkeep
-!data/train_test/.gitkeep
-!data/processed/.gitkeep

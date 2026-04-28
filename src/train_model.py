@@ -72,6 +72,28 @@ def evaluate_model(model: Any, X_test: pd.DataFrame, y_test: pd.Series) -> Dict[
     return metrics
 
 
+def print_metrics(metrics: Dict[str, Any]) -> None:
+    """Print training metrics in a readable format."""
+    print("\n" + "=" * 60)
+    print("TRAINING METRICS")
+    print("=" * 60)
+    print(f"Accuracy:   {metrics['accuracy']:.4f}")
+    print(f"Precision:  {metrics['precision']:.4f}")
+    print(f"Recall:     {metrics['recall']:.4f}")
+    print(f"F1-Score:   {metrics['f1']:.4f}")
+    if metrics.get("roc_auc") is not None:
+        print(f"ROC AUC:    {metrics['roc_auc']:.4f}")
+    
+    print("\nConfusion Matrix:")
+    cm = metrics["confusion_matrix"]
+    print(f"  [[{cm[0][0]:5d}, {cm[0][1]:5d}],")
+    print(f"   [{cm[1][0]:5d}, {cm[1][1]:5d}]]")
+    
+    print("\nClassification Report:")
+    print(metrics["classification_report"])
+    print("=" * 60 + "\n")
+
+
 def fit_training_artifacts(
     df: pd.DataFrame,
     model_type: str,
@@ -79,6 +101,8 @@ def fit_training_artifacts(
     random_state: int,
     corr_threshold: float,
     vif_threshold: float,
+    enable_vif: bool,
+    leakage_threshold: float,
 ) -> Tuple[Dict[str, Any], pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """Fit preprocessing and the classifier, then return the artifacts."""
     X = df.drop(columns=[TARGET_COL])
@@ -111,10 +135,21 @@ def fit_training_artifacts(
         X_test_df,
         threshold=corr_threshold,
     )
-    X_train_df, X_test_df, dropped_vif = prep.remove_high_vif_features(
+    if enable_vif:
+        X_train_df, X_test_df, dropped_vif = prep.remove_high_vif_features(
+            X_train_df,
+            X_test_df,
+            vif_threshold=vif_threshold,
+        )
+    else:
+        dropped_vif = []
+
+    # Suppression des features corrélées à la cible (détection leakage)
+    X_train_df, X_test_df, dropped_leakage = prep.remove_leakage_features(
         X_train_df,
         X_test_df,
-        vif_threshold=vif_threshold,
+        y_train,
+        leakage_threshold=leakage_threshold,
     )
 
     model = build_model(model_type=model_type, random_state=random_state)
@@ -133,6 +168,7 @@ def fit_training_artifacts(
         "nominal_cols": nominal_cols,
         "dropped_corr": dropped_corr,
         "dropped_vif": dropped_vif,
+        "dropped_leakage": dropped_leakage,
         "target_col": TARGET_COL,
         "model_type": model_type,
         "random_state": random_state,
@@ -184,6 +220,8 @@ def main() -> None:
     parser.add_argument("--test-size", type=float, default=0.2)
     parser.add_argument("--corr-threshold", type=float, default=0.90)
     parser.add_argument("--vif-threshold", type=float, default=10.0)
+    parser.add_argument("--enable-vif", action="store_true")
+    parser.add_argument("--leakage-threshold", type=float, default=0.3)
     parser.add_argument("--random-state", type=int, default=prep.RANDOM_STATE)
     args = parser.parse_args()
 
@@ -202,6 +240,8 @@ def main() -> None:
         random_state=args.random_state,
         corr_threshold=args.corr_threshold,
         vif_threshold=args.vif_threshold,
+        enable_vif=args.enable_vif,
+        leakage_threshold=args.leakage_threshold,
     )
 
     save_outputs(
@@ -215,11 +255,12 @@ def main() -> None:
         metrics_path=metrics_path,
     )
 
-    print("Training finished.")
-    print(f"Model bundle saved to: {model_path}")
-    print(f"Train/test splits saved to: {output_dir}")
-    print(f"Metrics saved to: {metrics_path}")
-    print(json.dumps(artifact["metrics"], ensure_ascii=False, indent=2))
+    print("\n✓ Training finished successfully.")
+    print(f"  Model bundle: {model_path}")
+    print(f"  Train/test splits: {output_dir}")
+    print(f"  Metrics file: {metrics_path}")
+    
+    print_metrics(artifact["metrics"])
 
 
 if __name__ == "__main__":
