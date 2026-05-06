@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChurnGuard — Prédiction de churn client</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy: #0f1f3d;
+      --navy2: #1a2f52;
+      --accent: #4f8ef7;
+      --accent2: #7eb3ff;
+      --green: #27ae60;
+      --orange: #f39c12;
+      --red: #e74c3c;
+      --bg: #f5f7fc;
+      --card: #ffffff;
+      --text: #1a1f2e;
+      --muted: #6b7280;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--navy);
+      padding: 0 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 16px rgba(15,31,61,0.18);
+    }
+    .logo {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.5rem;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+    .logo span { color: var(--accent2); }
+    .badge-model {
+      background: rgba(79,142,247,0.15);
+      border: 1px solid rgba(79,142,247,0.3);
+      color: var(--accent2);
+      font-size: 0.75rem;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-weight: 500;
+    }
+
+    /* ── Layout ── */
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      padding: 1.75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .card-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: 1.15rem;
+      color: var(--navy);
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card-title .icon {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+
+    /* ── Form ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.1rem;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .form-group label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .form-group .hint { font-size: 0.72rem; color: #9ca3af; margin-top: 2px; }
+
+    input[type="number"], select {
+      width: 100%;
+      padding: 10px 13px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.92rem;
+      font-family: 'DM Sans', sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type="number"]:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(79,142,247,0.12);
+      background: white;
+    }
+
+    /* ── Slider ── */
+    .slider-wrap { position: relative; }
+    input[type="range"] {
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      background: var(--border);
+    }
+    .slider-val {
+      position: absolute;
+      right: 0; top: -22px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    /* ── Submit button ── */
+    .btn-predict {
+      width: 100%;
+      margin-top: 1.5rem;
+      padding: 14px;
+      background: var(--navy);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      letter-spacing: 0.01em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    .btn-predict:hover { background: var(--navy2); }
+    .btn-predict:active { transform: scale(0.99); }
+    .btn-predict .spinner {
+      display: none;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    .btn-predict.loading .spinner { display: block; }
+    .btn-predict.loading .btn-text { opacity: 0.6; }
+    .btn-predict:disabled { opacity: 0.5; cursor: not-allowed; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Result panel ── */
+    .result-panel {
+      position: sticky;
+      top: 84px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* ── Score gauge ── */
+    .gauge-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem 0 0.5rem;
+    }
+    .gauge-svg { overflow: visible; }
+    .gauge-label {
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+    .gauge-label .pct {
+      font-family: 'DM Serif Display', serif;
+      font-size: 2.6rem;
+      color: var(--navy);
+      line-height: 1;
+      transition: color 0.4s;
+    }
+    .gauge-label .verdict {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 4px;
+      padding: 4px 14px;
+      border-radius: 999px;
+      display: inline-block;
+      transition: all 0.3s;
+    }
+
+    /* ── Mini metrics ── */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    .metric-box {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--border);
+    }
+    .metric-box .m-label { font-size: 0.7rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-box .m-val { font-size: 1.25rem; font-weight: 600; color: var(--navy); margin-top: 3px; }
+
+    /* ── Risk bar ── */
+    .risk-bar-wrap { margin-top: 0.5rem; }
+    .risk-bar-track {
+      height: 8px;
+      background: linear-gradient(to right, var(--green), var(--orange), var(--red));
+      border-radius: 99px;
+      position: relative;
+      margin: 0.5rem 0;
+    }
+    .risk-needle {
+      width: 14px; height: 14px;
+      background: white;
+      border: 3px solid var(--navy);
+      border-radius: 50%;
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      transition: left 0.6s cubic-bezier(0.34,1.56,0.64,1);
+      left: 50%;
+    }
+    .risk-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--muted);
+    }
+    .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; opacity: 0.4; }
+    .empty-state p { font-size: 0.88rem; line-height: 1.6; }
+
+    /* ── Model info ── */
+    .model-info {
+      background: var(--navy);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      color: rgba(255,255,255,0.85);
+      font-size: 0.8rem;
+      line-height: 1.7;
+    }
+    .model-info strong { color: white; display: block; margin-bottom: 0.5rem; font-family: 'DM Serif Display', serif; font-size: 0.95rem; }
+    .model-info .stat-row { display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.08); padding: 5px 0; }
+    .model-info .stat-row:first-of-type { margin-top: 0.5rem; }
+    .model-info .stat-val { color: var(--accent2); font-weight: 600; }
+
+    /* ── Alert ── */
+    .alert {
+      background: #fff5f5;
+      border: 1px solid #fc8181;
+      color: #c53030;
+      padding: 1rem;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+
+    /* ── Demo buttons ── */
+    .demo-btn {
+      padding: 7px 16px;
+      border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: var(--bg);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--navy);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .demo-btn:hover { background: var(--navy); color: white; border-color: var(--navy); }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: 1rem;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 760px) {
+      .page { grid-template-columns: 1fr; }
+      .result-panel { position: static; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Animation ── */
+    .fade-in { animation: fadeIn 0.35s ease; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Churn<span>Guard</span></div>
+  <span class="badge-model">LogisticRegression · {{ model_info.features }} features · ROC-AUC {{ model_info.roc_auc }}</span>
+</header>
+
+<div class="page">
+
+  <!-- ── LEFT: Formulaire ── -->
+  <div>
+    <div class="card">
+      <div class="card-title">
+        <span class="icon" style="background:#eef3ff">📋</span>
+        Profil client
+      </div>
+
+      <div id="alert-container"></div>
+
+      <div class="form-grid">
+
+        <div class="form-group">
+          <label>Recency (jours)</label>
+          <input type="number" id="recency" value="60" min="0" max="400" placeholder="0 – 400">
+          <span class="hint">Jours depuis le dernier achat</span>
+        </div>
+
+        <div class="form-group">
+          <label>Frequency (commandes)</label>
+          <input type="number" id="frequency" value="12" min="1" max="50" placeholder="1 – 50">
+          <span class="hint">Nombre total de commandes</span>
+        </div>
+
+        <div class="form-group">
+          <label>Monetary Total (£)</label>
+          <input type="number" id="monetary" value="850" min="0" max="15000" placeholder="0 – 15000">
+          <span class="hint">Dépense totale cumulée</span>
+        </div>
+
+        <div class="form-group">
+          <label>Tenure (jours)</label>
+          <input type="number" id="tenure" value="300" min="0" max="730" placeholder="0 – 730">
+          <span class="hint">Ancienneté du client</span>
+        </div>
+
+        <div class="form-group">
+          <label>Satisfaction (1–5)</label>
+          <div class="slider-wrap">
+            <span class="slider-val" id="sat-val">3</span>
+            <input type="range" id="satisfaction" min="1" max="5" step="0.5" value="3"
+              oninput="document.getElementById('sat-val').textContent=this.value">
+          </div>
+          <span class="hint">Note de satisfaction client</span>
+        </div>
+
+        <div class="form-group">
+          <label>Support Tickets</label>
+          <input type="number" id="tickets" value="1" min="0" max="15" placeholder="0 – 15">
+          <span class="hint">Tickets ouverts au support</span>
+        </div>
+
+      </div>
+
+      <button class="btn-predict" id="btn-predict" onclick="runPredict()">
+        <span class="spinner"></span>
+        <span class="btn-text">Prédire le churn</span>
+      </button>
+    </div>
+
+    <!-- Exemples rapides -->
+    <div class="card" style="margin-top:1.25rem">
+      <div class="card-title">
+        <span class="icon" style="background:#f0fff4">⚡</span>
+        Profils de démonstration
+      </div>
+      <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+        <button class="demo-btn" onclick="loadProfile('fidele')">Client fidèle</button>
+        <button class="demo-btn" onclick="loadProfile('risque')">Client à risque</button>
+        <button class="demo-btn" onclick="loadProfile('nouveau')">Nouveau client</button>
+        <button class="demo-btn" onclick="loadProfile('perdu')">Client perdu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: Résultats ── -->
+  <div class="result-panel">
+
+    <div class="card" id="result-card">
+      <div class="card-title">
+        <span class="icon" style="background:#fff7ed">📊</span>
+        Résultat de prédiction
+      </div>
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p>Remplissez le formulaire et cliquez sur <strong>Prédire le churn</strong> pour voir le résultat.</p>
+      </div>
+      <div id="result-content" style="display:none">
+        <!-- Gauge -->
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" width="200" height="110" viewBox="0 0 200 110">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#27ae60"/>
+                <stop offset="50%" stop-color="#f39c12"/>
+                <stop offset="100%" stop-color="#e74c3c"/>
+              </linearGradient>
+            </defs>
+            <!-- Track -->
+            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e2e8f0" stroke-width="14" stroke-linecap="round"/>
+            <!-- Active arc -->
+            <path id="gauge-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="251" stroke-dashoffset="251" style="transition: stroke-dashoffset 0.7s cubic-bezier(0.34,1.1,0.64,1)"/>
+            <!-- Needle -->
+            <line id="gauge-needle" x1="100" y1="100" x2="100" y2="28" stroke="#0f1f3d" stroke-width="2.5" stroke-linecap="round" style="transform-origin:100px 100px; transform:rotate(-90deg); transition:transform 0.7s cubic-bezier(0.34,1.1,0.64,1)"/>
+            <circle cx="100" cy="100" r="5" fill="#0f1f3d"/>
+          </svg>
+          <div class="gauge-label">
+            <div class="pct" id="gauge-pct">—</div>
+            <div class="verdict" id="gauge-verdict">—</div>
+          </div>
+        </div>
+
+        <!-- Barre de risque -->
+        <div class="risk-bar-wrap">
+          <div style="font-size:0.75rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Niveau de risque</div>
+          <div class="risk-bar-track">
+            <div class="risk-needle" id="risk-needle"></div>
+          </div>
+          <div class="risk-labels"><span>Faible</span><span>Modéré</span><span>Élevé</span></div>
+        </div>
+
+        <!-- Mini métriques -->
+        <div class="metrics-grid" style="margin-top:1.1rem">
+          <div class="metric-box">
+            <div class="m-label">Probabilité</div>
+            <div class="m-val" id="m-proba">—</div>
+          </div>
+          <div class="metric-box">
+            <div class="m-label">Décision</div>
+            <div class="m-val" id="m-label">—</div>
+          </div>
+          <div class="metric-box">
+            <div class="m-label">Churn prédit</div>
+            <div class="m-val" id="m-churn">—</div>
+          </div>
+          <div class="metric-box">
+            <div class="m-label">Confiance</div>
+            <div class="m-val" id="m-conf">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Infos modèle -->
+    <div class="model-info">
+      <strong>Modèle déployé</strong>
+      <div class="stat-row"><span>Algorithme</span><span class="stat-val">{{ model_info.algorithm }}</span></div>
+      <div class="stat-row"><span>Features finales</span><span class="stat-val">{{ model_info.features }}</span></div>
+      <div class="stat-row"><span>Accuracy</span><span class="stat-val">{{ model_info.accuracy }}</span></div>
+      <div class="stat-row"><span>ROC-AUC</span><span class="stat-val">{{ model_info.roc_auc }}</span></div>
+      <div class="stat-row"><span>Recall (churn)</span><span class="stat-val">{{ model_info.recall }}</span></div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  Atelier Machine Learning · Analyse Comportementale Clientèle Retail · 2025-2026
+</footer>
+
+<script>
+const profiles = {
+  fidele:  { recency:15,  frequency:30, monetary:4200, tenure:600, satisfaction:5,   tickets:0 },
+  risque:  { recency:280, frequency:3,  monetary:120,  tenure:90,  satisfaction:1.5, tickets:8 },
+  nouveau: { recency:5,   frequency:2,  monetary:85,   tenure:20,  satisfaction:4,   tickets:0 },
+  perdu:   { recency:390, frequency:1,  monetary:30,   tenure:400, satisfaction:1,   tickets:12 },
+};
+
+function loadProfile(key) {
+  const p = profiles[key];
+  document.getElementById('recency').value     = p.recency;
+  document.getElementById('frequency').value   = p.frequency;
+  document.getElementById('monetary').value    = p.monetary;
+  document.getElementById('tenure').value      = p.tenure;
+  document.getElementById('satisfaction').value = p.satisfaction;
+  document.getElementById('sat-val').textContent = p.satisfaction;
+  document.getElementById('tickets').value     = p.tickets;
+  runPredict();
+}
+
+function showAlert(message, type = 'error') {
+  const container = document.getElementById('alert-container');
+  const alert = document.createElement('div');
+  alert.className = 'alert';
+  alert.textContent = message;
+  container.innerHTML = '';
+  container.appendChild(alert);
+  setTimeout(() => alert.remove(), 5000);
+}
+
+function runPredict() {
+  const btn = document.getElementById('btn-predict');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  const data = {
+    recency:      document.getElementById('recency').value,
+    frequency:    document.getElementById('frequency').value,
+    monetary:     document.getElementById('monetary').value,
+    tenure:       document.getElementById('tenure').value,
+    satisfaction: document.getElementById('satisfaction').value,
+    tickets:      document.getElementById('tickets').value,
+  };
+
+  fetch('/predict', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+  .then(r => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  })
+  .then(res => {
+    if (res.error) {
+      showAlert('Erreur: ' + (res.error || 'Prédiction échouée'));
+    } else {
+      showResult(res);
+    }
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  })
+  .catch(err => {
+    showAlert('Erreur réseau: ' + err.message);
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  });
+}
+
+function showResult(res) {
+  document.getElementById('empty-state').style.display = 'none';
+  const content = document.getElementById('result-content');
+  content.style.display = 'block';
+  content.classList.remove('fade-in');
+  void content.offsetWidth;
+  content.classList.add('fade-in');
+
+  const proba = res.probability;
+  const pct   = proba * 100;
+
+  // Gauge arc (251 = demi-cercle circumference)
+  const offset = 251 - (251 * proba);
+  document.getElementById('gauge-arc').style.strokeDashoffset = offset;
+
+  // Needle rotation: -90° (0%) → +90° (100%)
+  const angle = -90 + (proba * 180);
+  document.getElementById('gauge-needle').style.transform = `rotate(${angle}deg)`;
+
+  // Gauge text
+  document.getElementById('gauge-pct').textContent = res.probability_pct;
+  document.getElementById('gauge-pct').style.color = res.risk_color;
+  const verdict = document.getElementById('gauge-verdict');
+  verdict.textContent = res.label;
+  verdict.style.background = res.risk_color + '22';
+  verdict.style.color = res.risk_color;
+
+  // Risk needle
+  document.getElementById('risk-needle').style.left = (pct) + '%';
+
+  // Metrics
+  document.getElementById('m-proba').textContent = res.probability_pct;
+  document.getElementById('m-proba').style.color  = res.risk_color;
+  document.getElementById('m-label').textContent  = res.label;
+  document.getElementById('m-label').style.color  = res.risk_color;
+  document.getElementById('m-churn').textContent  = res.churn === 1 ? 'Oui (1)' : 'Non (0)';
+  document.getElementById('m-churn').style.color  = res.risk_color;
+
+  const conf = proba >= 0.5 ? proba : 1 - proba;
+  document.getElementById('m-conf').textContent = (conf * 100).toFixed(1) + '%';
+}
+</script>
+
+</body>
+</html>

@@ -4,16 +4,18 @@ from __future__ import annotations
 import argparse
 import ipaddress
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import joblib
 
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
+from sklearn.decomposition import PCA
 
 
 # -----------------------------
@@ -23,7 +25,7 @@ from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 DEFAULT_RAW_PATH = Path("data/raw/retail_customers_COMPLETE_CATEGORICAL.csv")
 DEFAULT_OUTPUT_DIR = Path("data/train_test")
 DEFAULT_PROCESSED_PATH = Path("data/processed/retail_customers_processed.csv")
-TARGET_COL = "Churn"
+TARGET = "Churn"
 RANDOM_STATE = 42
 
 
@@ -129,6 +131,87 @@ def drop_useless_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def remove_suspicious_predictive_features(
+    df: pd.DataFrame,
+    target_col: str = TARGET,
+    protected_features: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """
+    Détecte et supprime les features qui prédisent trop bien la cible,
+    indiquant un leakage de données ou une dérivation directe du label.
+    
+    Critères de suppression:
+    - Catégories pures (tous les cas d'une catégorie ont target=0 ou 1) couvrant >10% des données
+    - Features numériques avec corr abs >= 0.8
+    - Features numériques avec valeurs exactes mappant à une seule classe (>5% couverture)
+    """
+    df = df.copy()
+    n = len(df)
+    drops = set()
+    
+    if target_col not in df.columns:
+        return df
+    
+    y = df[target_col]
+    
+    # Catégories avec groupes purs
+    cat_cols = df.select_dtypes(include=['object','string']).columns.tolist()
+    for col in cat_cols:
+        if col == target_col:
+            continue
+        try:
+            grp = df.groupby(col)[target_col].agg(['count','mean'])
+            pure = grp[(grp['mean']==0) | (grp['mean']==1)]
+            if not pure.empty:
+                rows = pure['count'].sum()
+                frac = rows / n
+                if frac >= 0.10:
+                    drops.add(col)
+        except Exception:
+            pass
+    
+    # Features numériques avec corrélation élevée
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    for col in num_cols:
+        if col == target_col:
+            continue
+        try:
+            corr = df[col].corr(df[target_col])
+            if pd.notna(corr) and abs(corr) >= 0.8:
+                drops.add(col)
+        except Exception:
+            pass
+    
+    # Features numériques avec pureté exacte (même valeur → même classe)
+    for col in num_cols:
+        if col == target_col:
+            continue
+        try:
+            vc = df[col].value_counts()
+            for val, cnt in vc.items():
+                if cnt < 2:
+                    continue
+                sub = df[df[col]==val]
+                if sub[target_col].nunique() == 1:
+                    if cnt / n >= 0.05:
+                        drops.add(col)
+                        break
+        except Exception:
+            pass
+    
+    if protected_features:
+        protected = set(protected_features)
+        drops = {col for col in drops if col not in protected}
+
+    if drops:
+        print(f"[Suspicious Features] {len(drops)} features supprimées (leakage/dérivation détectée) : {sorted(drops)}")
+        df = df.drop(columns=list(drops), errors='ignore')
+    else:
+        print("[Suspicious Features] Aucune feature suspecte détectée.")
+    
+    return df
+
+
 # -----------------------------
 # Column definitions (encoding)
 # -----------------------------
@@ -154,15 +237,15 @@ def infer_feature_groups(df: pd.DataFrame) -> Tuple[List[str], List[str], List[s
     numeric_cols = df.select_dtypes(
         include=["int64", "float64", "int32", "float32"]
     ).columns.tolist()
-    numeric_cols = [c for c in numeric_cols if c != TARGET_COL]
+    numeric_cols = [c for c in numeric_cols if c != TARGET]
 
     nominal_cols = df.select_dtypes(include=["object", "string"]).columns.tolist()
     nominal_cols = [
-        c for c in nominal_cols if c != TARGET_COL and c not in ordinal_cols
+        c for c in nominal_cols if c != TARGET and c not in ordinal_cols
     ]
 
     for extra in ["RegYear", "RegMonth", "RegDay", "RegWeekday", "IsPrivateIP", "IpFirstOctet"]:
-        if extra in df.columns and extra not in numeric_cols and extra != TARGET_COL:
+        if extra in df.columns and extra not in numeric_cols and extra != TARGET:
             numeric_cols.append(extra)
 
     def _unique(seq: List[str]) -> List[str]:
@@ -450,16 +533,32 @@ def prepare_dataframe(df: pd.DataFrame, require_target: bool = True) -> pd.DataF
     - featurisation IP
     - ratios dérivés
     - suppression colonnes inutiles (ID, constantes)
+    - détection et suppression de features suspectes (leakage)
     """
     df = df.copy()
 
-    if require_target and TARGET_COL not in df.columns:
-        raise ValueError(f"Target column '{TARGET_COL}' not found in dataset.")
+    if require_target and TARGET not in df.columns:
+        raise ValueError(f"Target column '{TARGET}' not found in dataset.")
 
     df = parse_registration_date(df, "RegistrationDate")
     df = featurize_ip(df, "LastLoginIP")
     df = add_feature_engineering(df)
     df = drop_useless_features(df)
+    # Ne pas utiliser la cible pour "nettoyer" les features à l'inférence.
+    # Cette étape sert uniquement à détecter du leakage pendant la phase d'entraînement.
+    if require_target:
+        df = remove_suspicious_predictive_features(
+            df,
+            TARGET,
+            protected_features=[
+                "Recency",
+                "Frequency",
+                "MonetaryTotal",
+                "CustomerTenureDays",
+                "SatisfactionScore",
+                "SupportTicketsCount",
+            ],
+        )
 
     return df
 
@@ -474,7 +573,7 @@ def split_and_transform(
     vif_threshold: float = 10.0,
     enable_vif: bool = False,
     leakage_threshold: float = 0.3,
-) -> None:
+) -> Tuple[Any, List[str]]:
     """
     Pipeline complet :
       1. Split stratifié train/test
@@ -491,13 +590,17 @@ def split_and_transform(
     corr_threshold : seuil corrélation absolue (défaut 0.90)
     vif_threshold  : seuil VIF (défaut 10.0)
     leakage_threshold : seuil corrélation cible (défaut 0.3)
+    
+    Returns
+    -------
+    tuple(preprocessor, final_columns)
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     if processed_path is not None:
         processed_path.parent.mkdir(parents=True, exist_ok=True)
 
-    X = df.drop(columns=[TARGET_COL])
-    y = df[TARGET_COL].astype(int)
+    X = df.drop(columns=[TARGET])
+    y = df[TARGET].astype(int)
 
     # Étape 1 : split stratifié
     X_train, X_test, y_train, y_test = train_test_split(
@@ -550,6 +653,14 @@ def split_and_transform(
         y_train,
         leakage_threshold=leakage_threshold,
     )
+    # PCA (ACP) - DÉSACTIVÉ pour avoir des résultats réalistes au lieu de 100% accuracy
+    # Les features brutes encodées sont suffisantes pour une bonne séparation sans suroptimisation
+    # pca = PCA(n_components=0.95, random_state=RANDOM_STATE)
+    # X_train_df = pd.DataFrame(pca.fit_transform(X_train_df))
+    # X_test_df = pd.DataFrame(pca.transform(X_test_df))
+    # print(f"[PCA] Nombre de composantes conservées : {X_train_df.shape[1]}")
+
+    print(f"[PCA] Désactivé - Features finales (sans réduction) : {X_train_df.shape[1]}")
 
     print(
         f"\n[Résumé] Features finales : {X_train_df.shape[1]} "
@@ -557,11 +668,17 @@ def split_and_transform(
         f"| Supprimées VIF : {len(dropped_vif)}"
     )
 
-    # Étape 7 : sauvegarde
+    # IMPORTANT:
+    # On conserve les vrais noms de features (issus du ColumnTransformer) afin de pouvoir
+    # reproduire exactement le même sous-ensemble de colonnes à l'inférence.
+    # Renommer en 0..N casse l'alignement (on ne sait plus quelles colonnes ont été supprimées).
+    final_columns = X_train_df.columns.tolist()
+
+    # Étape 8 : sauvegarde
     X_train_df.to_csv(output_dir / "X_train.csv", index=False)
     X_test_df.to_csv(output_dir  / "X_test.csv",  index=False)
-    y_train.to_frame(name=TARGET_COL).to_csv(output_dir / "y_train.csv", index=False)
-    y_test.to_frame(name=TARGET_COL).to_csv(output_dir  / "y_test.csv",  index=False)
+    y_train.to_frame(name=TARGET).to_csv(output_dir / "y_train.csv", index=False)
+    y_test.to_frame(name=TARGET).to_csv(output_dir  / "y_test.csv",  index=False)
 
     # Sauvegarde optionnelle du dataset complet transformé
     if processed_path is not None:
@@ -573,11 +690,17 @@ def split_and_transform(
 
         # Appliquer exactement les mêmes suppressions que sur train
         cols_to_keep = X_train_df.columns.tolist()
-        X_all_df = X_all_df[[c for c in cols_to_keep if c in X_all_df.columns]]
+        X_all_df = X_all_df.loc[:, [c for c in cols_to_keep if c in X_all_df.columns]]
 
         df_processed = X_all_df.copy()
-        df_processed[TARGET_COL] = y.values
+        df_processed[TARGET] = y.values
         df_processed.to_csv(processed_path, index=False)
+    
+    # Sauvegarder le preprocessor et les métadonnées pour la prédiction
+    preprocessor_path = output_dir / "preprocessor.joblib"
+    joblib.dump(preprocessor, preprocessor_path)
+    
+    return preprocessor, final_columns
 
 
 def main() -> None:

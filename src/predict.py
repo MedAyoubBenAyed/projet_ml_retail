@@ -11,8 +11,8 @@ import pandas as pd
 import preprocessing as prep
 
 
-DEFAULT_MODEL_PATH = Path("models/churn_model_bundle.joblib")
-DEFAULT_OUTPUT_PATH = Path("reports/predictions.csv")
+DEFAULT_MODEL_PATH = Path(__file__).parent.parent / "models" / "churn_model_bundle.joblib"
+DEFAULT_OUTPUT_PATH = Path(__file__).parent.parent / "reports" / "predictions.csv"
 
 
 def load_bundle(model_path: str | Path) -> Dict[str, Any]:
@@ -27,20 +27,41 @@ def prepare_features(df: pd.DataFrame, bundle: Dict[str, Any]) -> pd.DataFrame:
     """Apply the same preprocessing chain used at training time."""
     df = prep.prepare_dataframe(df, require_target=False)
 
-    input_columns = bundle["input_columns"]
-    df = df.reindex(columns=input_columns)
-
     preprocessor = bundle["preprocessor"]
+    if preprocessor is None:
+        raise ValueError("Preprocessor not found in model bundle. Re-train the model.")
+    
     transformed = preprocessor.transform(df)
 
-    feature_names = bundle.get("feature_names_out") or []
-    if feature_names and len(feature_names) == transformed.shape[1]:
-        features = pd.DataFrame(transformed, columns=feature_names, index=df.index)
-    else:
+    # Recréer un DataFrame avec les noms des features du préprocesseur, si possible.
+    try:
+        feature_names = preprocessor.get_feature_names_out()
+        features = pd.DataFrame(transformed, index=df.index, columns=feature_names)
+    except Exception:
+        # Fallback: pas de noms disponibles (ancien sklearn / pipeline)
         features = pd.DataFrame(transformed, index=df.index)
 
-    final_columns = bundle["final_columns"]
-    features = features.reindex(columns=final_columns, fill_value=0.0)
+    # Appliquer exactement le même sous-ensemble de features conservées à l'entraînement.
+    # On réaligne strictement les colonnes pour éviter les écarts train/inférence.
+    kept = bundle.get("kept_feature_names") or bundle.get("final_columns") or []
+    if kept:
+        # Format attendu : noms de colonnes conservées après sélection (corr/VIF/leakage).
+        if isinstance(kept[0], str):
+            expected_cols = [str(col) for col in kept]
+            # Reindex garantit:
+            # - même ordre de colonnes qu'au fit
+            # - suppression des colonnes en trop
+            # - ajout des colonnes manquantes avec 0.0
+            features = features.reindex(columns=expected_cols, fill_value=0.0)
+        else:
+            # Ancien format: indices numériques (0..k-1).
+            try:
+                kept_int = [int(c) if isinstance(c, str) and str(c).isdigit() else int(c) for c in kept]
+                features = features.iloc[:, kept_int]
+            except Exception:
+                # Si on ne peut pas aligner proprement, on laisse toutes les colonnes
+                pass
+
     return features
 
 
@@ -57,6 +78,33 @@ def predict_dataframe(df: pd.DataFrame, bundle: Dict[str, Any]) -> pd.DataFrame:
         output["probability"] = probabilities
 
     return output
+
+
+def print_prediction_summary(result: pd.DataFrame) -> None:
+    """Print a compact, readable prediction summary for the terminal."""
+    preview_columns = [
+        col for col in ["CustomerID", "Churn", "prediction", "probability"]
+        if col in result.columns
+    ]
+
+    print("\n=== Prediction summary ===")
+    print(f"Rows: {len(result)}")
+
+    if "prediction" in result.columns:
+        counts = result["prediction"].value_counts().sort_index()
+        print("Prediction counts:")
+        for label, count in counts.items():
+            print(f"  {label}: {count}")
+
+    if "probability" in result.columns:
+        print(f"Average probability: {result['probability'].mean():.4f}")
+
+    if preview_columns:
+        print("\nPreview:")
+        print(result.loc[:, preview_columns].head().to_string(index=False))
+    else:
+        print("\nPreview:")
+        print(result.head().to_string(index=False))
 
 
 def main() -> None:
@@ -82,7 +130,7 @@ def main() -> None:
         result.to_csv(output_path, index=False)
         print(f"Predictions saved to: {output_path}")
 
-    print(result.head().to_string())
+    print_prediction_summary(result)
 
 
 if __name__ == "__main__":
