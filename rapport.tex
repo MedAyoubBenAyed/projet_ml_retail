@@ -1,0 +1,706 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{colortbl}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tikz}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{multicol}
+\usepackage{listings}
+\usepackage{tcolorbox}
+\usepackage{amssymb}
+
+
+\geometry{margin=2cm}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Atelier Machine Learning}
+\lhead{Analyse Comportementale Clientèle}
+\rfoot{Page \thepage}
+
+% Couleurs personnalisées
+\definecolor{headerblue}{RGB}{41, 65, 114}
+\definecolor{lightgray}{RGB}{245, 245, 245}
+\definecolor{accentorange}{RGB}{230, 126, 34}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{codegray}{RGB}{128,128,128}
+\definecolor{codepurple}{RGB}{128,0,128}
+\definecolor{backcolour}{RGB}{248,248,248}
+\definecolor{warningred}{RGB}{231, 76, 60}
+\definecolor{successgreen}{RGB}{46, 204, 113}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codepurple},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codegreen},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\tcbset{
+    colback=backcolour,
+    colframe=headerblue,
+    fonttitle=\bfseries,
+    boxrule=1pt,
+    arc=3mm
+}
+
+\titleformat{\section}
+{\color{headerblue}\normalfont\Large\bfseries}
+{\thesection}{1em}{}[{\titlerule[2pt]}]
+
+\titleformat{\subsection}
+{\color{accentorange}\normalfont\large\bfseries}
+{\thesubsection}{1em}{}
+
+% Définition de colonnes personnalisées
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\begin{document}
+
+% ─────────────────────────────────────────────────────────────
+%  PAGE DE GARDE
+% ─────────────────────────────────────────────────────────────
+\begin{titlepage}
+\begin{tikzpicture}[remember picture,overlay]
+    \fill[headerblue] (current page.north west) rectangle ([yshift=-5cm]current page.north east);
+    \node[anchor=north west, xshift=2cm, yshift=-2cm, text=white] at (current page.north west)
+        {\Huge\textbf{Atelier Machine Learning}};
+    \node[anchor=north west, xshift=2cm, yshift=-3.5cm, text=white] at (current page.north west)
+        {\Large\textit{Analyse Comportementale Clientèle Retail}};
+\end{tikzpicture}
+
+\vspace{6cm}
+
+\begin{center}
+{\LARGE\textbf{COMPTE RENDU}}\par
+\vspace{1cm}
+{\large Atelier Pratique : E-commerce de Cadeaux}\par
+\vspace{2cm}
+{\large \textbf{Préparé par Med Ayoub Ben Ayed}}
+\vspace{3cm}
+
+\begin{tikzpicture}
+    \draw[headerblue, line width=2pt] (0,0) -- (10,0);
+\end{tikzpicture}
+
+\vspace{2cm}
+
+{\textbf{Année Universitaire : 2025--2026}}
+\end{center}
+\vfill
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────
+%  1. INTRODUCTION
+% ─────────────────────────────────────────────────────────────
+\section{Introduction}
+
+Ce compte rendu présente le travail réalisé dans le cadre de l'atelier \textit{Machine Learning appliqué au commerce de détail}. L'objectif principal est de construire un système complet de prédiction du \textbf{churn} (attrition client) à partir de données transactionnelles d'une boutique e-commerce spécialisée dans les cadeaux.
+
+Le projet couvre l'intégralité du cycle de vie d'un projet de machine learning :
+\begin{itemize}[noitemsep]
+    \item exploration et nettoyage des données,
+    \item ingénierie de features et construction d'un pipeline de prétraitement,
+    \item entraînement et comparaison de plusieurs modèles de classification,
+    \item évaluation des performances,
+    \item déploiement d'une API de prédiction via Flask.
+\end{itemize}
+
+\begin{tcolorbox}[title=Contexte métier]
+Le churn désigne le fait qu'un client cesse d'acheter auprès d'une entreprise. Le détecter à l'avance permet de mettre en place des actions de fidélisation ciblées, réduisant ainsi le coût d'acquisition de nouveaux clients.
+\end{tcolorbox}
+
+% ─────────────────────────────────────────────────────────────
+%  2. DESCRIPTION DU JEU DE DONNÉES
+% ─────────────────────────────────────────────────────────────
+\section{Description du jeu de données}
+
+\subsection{Vue d'ensemble}
+
+Le fichier source \texttt{data/raw/retail\_customers\_COMPLETE\_CATEGORICAL.csv} contient les enregistrements de 4~372 clients avec 52 variables (51 features + 1 variable cible).
+
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{Caractéristique} & \textbf{Valeur} \\
+\midrule
+Nombre de clients & 4~372 \\
+Nombre de variables & 52 \\
+Variable cible & \texttt{Churn} (0 = non-churn, 1 = churn) \\
+Taux de churn & 33,3~\% (1~454 / 4~372) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Variables du dataset}
+
+Les 51 features sont regroupées en plusieurs familles :
+
+\begin{longtable}{L{4.5cm} L{6cm} C{3cm}}
+\toprule
+\textbf{Variable} & \textbf{Description} & \textbf{Type} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\textit{Suite page suivante}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+% RFM
+\texttt{Recency} & Nombre de jours depuis le dernier achat (1--374, moy. 92) & Numérique \\
+\texttt{Frequency} & Nombre de transactions (1--248, moy. 5) & Numérique \\
+\texttt{MonetaryTotal} & Montant total dépensé en £ (moy. 1~898~£) & Numérique \\
+\texttt{MonetaryAvg} & Montant moyen par transaction & Numérique \\
+\texttt{MonetaryStd} & Écart-type du montant par transaction & Numérique \\
+\texttt{MonetaryMin / MonetaryMax} & Montant min/max par transaction & Numérique \\
+\midrule
+% Transactional
+\texttt{TotalQuantity} & Quantité totale de produits commandés & Numérique \\
+\texttt{AvgQuantityPerTransaction} & Quantité moyenne par transaction & Numérique \\
+\texttt{CancelledTransactions} & Nombre de transactions annulées & Numérique \\
+\texttt{ReturnRatio} & Ratio de retours & Numérique \\
+\texttt{UniqueInvoices} & Nombre de factures uniques & Numérique \\
+\texttt{UniqueProducts} & Nombre de références produits distinctes & Numérique \\
+\texttt{AvgLinesPerInvoice} & Lignes moyennes par facture & Numérique \\
+\midrule
+% Temporel
+\texttt{CustomerTenureDays} & Ancienneté du client en jours & Numérique \\
+\texttt{RegistrationDate} & Date d'inscription & Date \\
+\texttt{PreferredDayOfWeek} & Jour préféré d'achat & Numérique \\
+\texttt{PreferredHour} & Heure préférée d'achat & Numérique \\
+\texttt{WeekendPurchaseRatio} & Proportion d'achats le week-end & Numérique \\
+\texttt{AvgDaysBetweenPurchases} & Intervalle moyen entre achats & Numérique \\
+\midrule
+% Profil
+\texttt{Age} & Âge du client (moy. 49 ans, 30~\% manquants) & Numérique \\
+\texttt{Gender} & Genre & Catégorielle \\
+\texttt{Country} & Pays (majoritairement UK : 90~\%) & Catégorielle \\
+\texttt{Region} & Région géographique & Catégorielle \\
+\texttt{AccountStatus} & Statut du compte & Catégorielle \\
+\texttt{SupportTicketsCount} & Nombre de tickets de support & Numérique \\
+\texttt{SatisfactionScore} & Score de satisfaction (1--5) & Numérique \\
+\midrule
+% Catégorielles ordonnées
+\texttt{SpendingCategory} & Catégorie de dépense (Low/Medium/High/VIP) & Ordinale \\
+\texttt{LoyaltyLevel} & Niveau de fidélité (Nouveau/Jeune/Établi/Ancien) & Ordinale \\
+\texttt{BasketSizeCategory} & Taille du panier (Petit/Moyen/Grand) & Ordinale \\
+\texttt{AgeCategory} & Tranche d'âge & Ordinale \\
+\texttt{PreferredTimeOfDay} & Créneau horaire préféré & Ordinale \\
+\midrule
+% Catégorielles nominales
+\texttt{RFMSegment} & Segment RFM (Champions/Fidèles/Potentiels/Dormants) & Nominale \\
+\texttt{CustomerType} & Type client (Nouveau/Régulier/Hyperactif/Perdu/Occasionnel) & Nominale \\
+\texttt{FavoriteSeason} & Saison de prédilection & Nominale \\
+\texttt{ProductDiversity} & Diversité des achats & Nominale \\
+\texttt{WeekendPreference} & Préférence semaine/week-end & Nominale \\
+\texttt{ChurnRiskCategory} & Catégorie de risque de churn \emph{(variable proxy — supprimée)} & Nominale \\
+\end{longtable}
+
+\subsection{Déséquilibre des classes}
+
+Le dataset présente un déséquilibre modéré : 33,3~\% de clients churners contre 66,7~\% de clients actifs. Ce déséquilibre est pris en compte dans le pipeline via la technique SMOTE (voir section~\ref{sec:pipeline}).
+
+\subsection{Valeurs manquantes}
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Variable} & \textbf{Valeurs manquantes} & \textbf{Taux (\%)} \\
+\midrule
+\texttt{Age} & 1~311 & 30,0 \\
+\texttt{AvgDaysBetweenPurchases} & 79 & 1,8 \\
+Autres variables & 0 & 0,0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Les valeurs aberrantes détectées dans \texttt{SupportTicketsCount} (valeurs $-1$ et $999$) et \texttt{SatisfactionScore} (valeurs $-1$, $0$ et $99$) sont traitées comme manquantes.
+
+% ─────────────────────────────────────────────────────────────
+%  3. EXPLORATION DES DONNÉES
+% ─────────────────────────────────────────────────────────────
+\section{Exploration des données}
+
+\subsection{Objectifs de l'exploration}
+
+L'exploration a été réalisée dans le notebook \texttt{notebooks/01\_data\_exploration.ipynb}. Elle comprend les étapes suivantes :
+
+\begin{enumerate}[noitemsep]
+    \item Inspection de la structure du dataset (\texttt{shape}, \texttt{info()}, \texttt{dtypes}).
+    \item Analyse des valeurs manquantes et de leur distribution.
+    \item Statistiques descriptives (\texttt{describe()}) sur les variables numériques et catégorielles.
+    \item Calcul de la matrice de corrélation et visualisation sous forme de carte thermique.
+    \item Filtrage des paires de variables avec une corrélation $|\rho| > 0{,}8$.
+    \item Calcul du \textbf{Facteur d'Inflation de la Variance (VIF)} pour détecter la multicolinéarité.
+\end{enumerate}
+
+\subsection{Analyse de corrélation}
+
+La matrice de corrélation a révélé de fortes redondances entre certaines variables transactionnelles. Les variables présentant une corrélation supérieure à 0,8 avec une autre variable ont été identifiées pour suppression :
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Groupe} & \textbf{Variables à supprimer} \\
+\midrule
+Montants & \texttt{MonetaryMin}, \texttt{MonetaryMax} \\
+Quantités & \texttt{TotalQuantity}, \texttt{MinQuantity}, \texttt{MaxQuantity} \\
+Descriptions & \texttt{UniqueDescriptions} \\
+Transactions annulées & \texttt{CancelledTransactions} \\
+Transactions totales & \texttt{TotalTransactions}, \texttt{UniqueInvoices}, \texttt{AvgLinesPerInvoice} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Analyse VIF}
+
+L'analyse VIF a identifié trois variables avec un VIF très élevé, indiquant une forte multicolinéarité avec les autres features :
+
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{Variable} & \textbf{Action} \\
+\midrule
+\texttt{CustomerID} & Supprimée (identifiant non prédictif) \\
+\texttt{CustomerTenureDays} & Supprimée (VIF élevé) \\
+\texttt{FirstPurchaseDaysAgo} & Supprimée (VIF élevé) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Variables proxy supprimées}
+
+Les variables \texttt{ChurnRiskCategory}, \texttt{NewsletterSubscribed} et \texttt{LastLoginIP} ont été supprimées car elles constituent soit des proxies directs de la variable cible (risque de fuite de données), soit des informations inutilisables en production.
+
+% ─────────────────────────────────────────────────────────────
+%  4. PIPELINE DE PRÉTRAITEMENT
+% ─────────────────────────────────────────────────────────────
+\section{Pipeline de prétraitement}
+\label{sec:pipeline}
+
+\subsection{Architecture générale}
+
+Le prétraitement est entièrement encapsulé dans un pipeline scikit-learn/imbalanced-learn défini dans \texttt{src/preprocessing.py}. Cette architecture garantit l'absence de \textit{data leakage} : toutes les transformations (imputation, normalisation, PCA) sont ajustées uniquement sur les données d'entraînement et appliquées telles quelles aux données de test et de production.
+
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw=headerblue, fill=lightgray, rounded corners,
+                minimum width=5cm, minimum height=0.75cm,
+                text centered, font=\small},
+    arrow/.style={->, thick, headerblue}
+]
+% vertical chain
+\node[box] (raw)   at (0,  0)   {Données brutes (52 colonnes)};
+\node[box] (clean) at (0, -1.2) {\textbf{DataCleaner} : nettoyage + feature engineering};
+\node[box] (dyn)   at (0, -2.4) {\textbf{DynamicColumnTransformer}};
+% three branches
+\node[box] (num)   at (-4.5, -3.8) {Numériques\\Imputer $\to$ Scaler $\to$ PCA};
+\node[box] (ord)   at ( 0,   -3.8) {Ordinales\\Imputer $\to$ OrdinalEncoder};
+\node[box] (nom)   at ( 4.5, -3.8) {Nominales\\Imputer $\to$ OneHotEncoder};
+% SMOTE + clf
+\node[box] (smote) at (0, -5.2) {\textbf{SMOTE} (sur-échantillonnage)};
+\node[box] (clf)   at (0, -6.4) {\textbf{Classifieur}};
+
+\draw[arrow] (raw)   -- (clean);
+\draw[arrow] (clean) -- (dyn);
+\draw[arrow] (dyn)   -- (num);
+\draw[arrow] (dyn)   -- (ord);
+\draw[arrow] (dyn)   -- (nom);
+\draw[arrow] (num)   -- (smote);
+\draw[arrow] (ord)   -- (smote);
+\draw[arrow] (nom)   -- (smote);
+\draw[arrow] (smote) -- (clf);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Étape 1 : DataCleaner}
+
+La classe \texttt{DataCleaner} (fichier \texttt{src/preprocessing.py}, lignes 88--127) effectue les opérations suivantes :
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Suppression des colonnes} redondantes, identifiants et proxies (22 colonnes supprimées).
+    \item \textbf{Correction des valeurs aberrantes} :
+        \begin{itemize}[noitemsep]
+            \item \texttt{SupportTicketsCount} : $-1$ et $999 \to$ NaN
+            \item \texttt{SatisfactionScore} : $-1$, $0$ et $99 \to$ NaN
+        \end{itemize}
+    \item \textbf{Parsing de la date d'inscription} (\texttt{RegistrationDate}) en quatre variables numériques : \texttt{RegYear}, \texttt{RegMonth}, \texttt{RegDay}, \texttt{RegWeekday}.
+    \item \textbf{Ingénierie de features} :
+        \begin{itemize}[noitemsep]
+            \item $\texttt{MonetaryPerDay} = \frac{\texttt{MonetaryTotal}}{\texttt{Recency} + 1}$
+            \item $\texttt{AvgBasketValue} = \frac{\texttt{MonetaryTotal}}{\texttt{Frequency}}$
+        \end{itemize}
+\end{enumerate}
+
+\subsection{Étape 2 : DynamicColumnTransformer}
+
+Ce transformateur détecte automatiquement les colonnes disponibles après nettoyage et les route vers l'un des trois sous-pipelines :
+
+\begin{center}
+\begin{tabular}{L{3.5cm} L{5cm} L{5cm}}
+\toprule
+\textbf{Branche} & \textbf{Colonnes traitées} & \textbf{Transformations} \\
+\midrule
+Numériques & Toutes les colonnes \texttt{float/int} & Imputation médiane $\to$ StandardScaler $\to$ PCA (95~\% variance) \\
+Ordinales & \texttt{SpendingCategory}, \texttt{LoyaltyLevel}, \texttt{BasketSizeCategory}, \texttt{AgeCategory}, \texttt{PreferredTimeOfDay} & Imputation mode $\to$ OrdinalEncoder (ordres définis) \\
+Nominales & \texttt{RFMSegment}, \texttt{CustomerType}, \texttt{FavoriteSeason}, \texttt{Region}, \texttt{Gender}, \texttt{Country}, etc. & Imputation mode $\to$ OneHotEncoder \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+La PCA est configurée pour conserver les composantes expliquant au moins 95~\% de la variance totale des variables numériques, réduisant ainsi la dimensionnalité tout en préservant l'information essentielle.
+
+\subsection{Étape 3 : SMOTE}
+
+La technique SMOTE (\textit{Synthetic Minority Over-sampling Technique}) génère des exemples synthétiques de la classe minoritaire (churn = 1) dans l'espace des features transformées. Elle est appliquée \textbf{uniquement pendant l'entraînement}, ce qui garantit qu'aucune donnée synthétique ne contaminent l'ensemble de test.
+
+\begin{lstlisting}[language=Python, caption=Construction du pipeline complet (src/preprocessing.py)]
+def create_training_pipeline(..., use_smote=True) -> ImbPipeline:
+    preprocessor = create_preprocessor(...)
+    steps = list(preprocessor.steps)    # cleaner + dynamic transformer
+    if use_smote:
+        steps.append(("smote", SMOTE(random_state=42)))
+    steps.append(("classifier", classifier))
+    return ImbPipeline(steps=steps)
+\end{lstlisting}
+
+% ─────────────────────────────────────────────────────────────
+%  5. MODÈLES ENTRAÎNÉS
+% ─────────────────────────────────────────────────────────────
+\section{Modèles entraînés et comparaison}
+
+\subsection{Séparation train/test}
+
+La séparation des données est réalisée avec une proportion 80~\%/20~\% en utilisant une stratification sur la variable cible afin de conserver le même ratio de churn dans les deux ensembles :
+
+\begin{lstlisting}[language=Python, caption=Séparation stratifiée (src/train\_model.py)]
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+\end{lstlisting}
+
+Cela correspond à environ \textbf{3~497 exemples} d'entraînement et \textbf{875 exemples} de test.
+
+\subsection{Candidats comparés}
+
+Quatre classifieurs sont entraînés et comparés dans \texttt{src/train\_model.py} :
+
+\begin{center}
+\begin{tabular}{L{3.5cm} L{8cm} C{2cm}}
+\toprule
+\textbf{Modèle} & \textbf{Hyperparamètres principaux} & \textbf{Bibliothèque} \\
+\midrule
+Régression Logistique & \texttt{max\_iter=2000}, \texttt{class\_weight=balanced} & scikit-learn \\
+Random Forest & \texttt{n\_estimators=300}, \texttt{class\_weight=balanced} & scikit-learn \\
+K-Nearest Neighbors & \texttt{n\_neighbors=9} & scikit-learn \\
+XGBoost & \texttt{n\_estimators=300}, \texttt{max\_depth=6}, \texttt{lr=0.05}, \texttt{subsample=0.9} & xgboost \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Critère de sélection}
+
+Le meilleur modèle est sélectionné sur la base du \textbf{score F1} calculé sur l'ensemble de test. Le score F1 est privilégié car il représente la moyenne harmonique entre précision et rappel, ce qui est particulièrement pertinent pour des données déséquilibrées.
+
+$$F_1 = 2 \cdot \frac{\mathrm{Precision} \times \mathrm{Rappel}}{\mathrm{Precision} + \mathrm{Rappel}}$$
+
+\subsection{Métriques d'évaluation}
+
+Les métriques calculées pour chaque modèle sont les suivantes :
+
+\begin{center}
+\begin{tabular}{L{4.5cm} L{8cm}}
+\toprule
+\textbf{Métrique} & \textbf{Description} \\
+\midrule
+Accuracy & Taux global de bonne classification \\
+Précision & Proportion de vrais positifs parmi les prédits positifs \\
+Rappel & Proportion de vrais positifs parmi les réels positifs \\
+F1-score & Moyenne harmonique précision/rappel \\
+ROC-AUC & Aire sous la courbe ROC \\
+Matrice de confusion & Distribution des 4 classes (TP, FP, TN, FN) \\
+Nombre de composantes PCA & Nombre de composantes retenues pour 95~\% de variance \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Rapport de métriques}
+
+Les résultats sont enregistrés dans \texttt{reports/model\_metrics.json} au format suivant :
+
+\begin{lstlisting}[language=Python, caption=Structure du rapport de métriques]
+{
+  "best_model": "xgboost",
+  "selection_metric": "f1_score",
+  "metrics": {
+    "logistic_regression": {
+      "accuracy": ..., "precision": ..., "recall": ...,
+      "f1_score": ..., "roc_auc": ..., "pca_components": ...
+    },
+    "random_forest": { ... },
+    "knn": { ... },
+    "xgboost": { ... }
+  }
+}
+\end{lstlisting}
+
+% ─────────────────────────────────────────────────────────────
+%  6. DÉPLOIEMENT — API FLASK
+% ─────────────────────────────────────────────────────────────
+\section{Déploiement : API Flask}
+
+\subsection{Architecture de l'application}
+
+L'application Flask (\texttt{app/app.py}) expose le modèle entraîné sous forme d'une API REST. Le modèle est chargé en mémoire une seule fois au démarrage via la classe \texttt{ChurnPredictor} (\texttt{src/predict.py}).
+
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw=headerblue, fill=lightgray, rounded corners,
+                minimum width=3.5cm, minimum height=0.75cm,
+                text centered, font=\small},
+    arrow/.style={->, thick, headerblue}
+]
+\node[box] (client) at (0,   0) {Client HTTP};
+\node[box] (flask)  at (4,   0) {Flask API (\texttt{app.py})};
+\node[box] (pred)   at (8,   0) {\texttt{ChurnPredictor}};
+\node[box] (model)  at (12,  0) {Pipeline joblib};
+
+\draw[arrow] (client) -- node[above, font=\scriptsize]{POST /predict} (flask);
+\draw[arrow] (flask)  -- node[above, font=\scriptsize]{dict payload}  (pred);
+\draw[arrow] (pred)   -- node[above, font=\scriptsize]{predict()}      (model);
+\draw[arrow] (model)  -- ++(0,-0.9) -- ++(-12,0) -- node[left, font=\scriptsize]{proba, classe} (client.south);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Endpoints}
+
+\begin{center}
+\begin{tabular}{L{2cm} L{2.5cm} L{4cm} L{4.5cm}}
+\toprule
+\textbf{Méthode} & \textbf{Route} & \textbf{Corps de requête} & \textbf{Réponse} \\
+\midrule
+\texttt{GET} & \texttt{/} & — & \texttt{\{"message": "Retail churn API is running"\}} \\
+\texttt{POST} & \texttt{/predict} & JSON avec features client & \texttt{\{"churn\_prediction": 0|1, "churn\_probability": float\}} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Exemple d'utilisation}
+
+\begin{lstlisting}[language=bash, caption=Exemple de requête curl]
+curl -X POST http://127.0.0.1:5000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Recency": 10,
+    "Frequency": 15,
+    "MonetaryTotal": 1000,
+    "RegistrationDate": "2023-01-10",
+    "Gender": "F",
+    "Country": "France"
+  }'
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption=Exemple de réponse JSON]
+{
+  "churn_prediction": 0,
+  "churn_probability": 0.12
+}
+\end{lstlisting}
+
+\subsection{Configuration}
+
+Le chemin du modèle peut être configuré via la variable d'environnement \texttt{CHURN\_MODEL\_PATH}. En l'absence de cette variable, le chemin par défaut \texttt{models/best\_churn\_pipeline.joblib} est utilisé.
+
+La classe \texttt{ChurnPredictor} gère automatiquement les colonnes manquantes dans le payload en les initialisant à \texttt{None}, ce qui permet d'envoyer uniquement les features disponibles sans erreur.
+
+% ─────────────────────────────────────────────────────────────
+%  7. TESTS
+% ─────────────────────────────────────────────────────────────
+\section{Tests}
+
+\subsection{Stratégie de test}
+
+Les tests unitaires et d'intégration sont définis dans \texttt{tests/test\_ml\_pipeline.py} et utilisent des données synthétiques générées à la volée pour ne pas dépendre du fichier CSV de données réelles.
+
+\subsection{Tests implémentés}
+
+\begin{center}
+\begin{tabular}{L{5cm} L{8cm}}
+\toprule
+\textbf{Test} & \textbf{Description} \\
+\midrule
+\texttt{test\_pipeline\_applies\_pca\_and\_predicts} & Vérifie que le pipeline s'entraîne correctement, génère des prédictions de la bonne longueur, et que la PCA retient entre 1 et 3 composantes sur les features numériques synthétiques. \\
+\texttt{test\_train\_and\_predictor\_end\_to\_end} & Test d'intégration complet : entraînement de tous les modèles, vérification de la sauvegarde du modèle et du rapport JSON, puis prédiction via \texttt{ChurnPredictor} sur un client fictif. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Exécution des tests}
+
+\begin{lstlisting}[language=bash, caption=Commande d'exécution des tests]
+python -m unittest -v tests/test_ml_pipeline.py
+\end{lstlisting}
+
+% ─────────────────────────────────────────────────────────────
+%  8. STRUCTURE DU PROJET
+% ─────────────────────────────────────────────────────────────
+\section{Structure du projet}
+
+\begin{tcolorbox}[title=Arborescence du projet]
+\begin{verbatim}
+projet_ml_retail/
+├── data/
+│   ├── raw/          ← données brutes (CSV source)
+│   ├── processed/    ← (placeholder) données nettoyées
+│   └── train_test/   ← (généré) X_train/X_test/y_train/y_test
+├── notebooks/
+│   └── 01_data_exploration.ipynb   ← EDA, corrélation, VIF
+├── src/
+│   ├── preprocessing.py   ← DataCleaner + pipeline sklearn
+│   ├── train_model.py     ← entraînement + sélection du meilleur modèle
+│   ├── predict.py         ← ChurnPredictor (inférence)
+│   └── utils.py           ← métriques, sauvegarde/chargement modèle
+├── app/
+│   └── app.py             ← API Flask (POST /predict)
+├── models/                ← (généré) best_churn_pipeline.joblib
+├── reports/               ← (généré) model_metrics.json
+├── tests/
+│   └── test_ml_pipeline.py
+├── requirements.txt
+└── README.md
+\end{verbatim}
+\end{tcolorbox}
+
+\subsection{Bibliothèques utilisées}
+
+\begin{center}
+\begin{tabular}{L{4cm} L{8.5cm}}
+\toprule
+\textbf{Bibliothèque} & \textbf{Rôle dans le projet} \\
+\midrule
+\texttt{pandas}, \texttt{numpy} & Chargement et manipulation des données \\
+\texttt{scikit-learn $\geq$ 1.3} & Pipelines, transformateurs, modèles, métriques \\
+\texttt{imbalanced-learn $\geq$ 0.11} & SMOTE et \texttt{ImbPipeline} \\
+\texttt{xgboost $\geq$ 2.0} & Classifieur XGBoost (optionnel) \\
+\texttt{joblib $\geq$ 1.3} & Sérialisation du modèle \\
+\texttt{flask $\geq$ 3.0} & API REST de prédiction \\
+\texttt{matplotlib}, \texttt{seaborn} & Visualisations dans le notebook \\
+\texttt{statsmodels $\geq$ 0.14} & Calcul du VIF dans le notebook \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────────────────────────────────────────
+%  9. GUIDE D'UTILISATION
+% ─────────────────────────────────────────────────────────────
+\section{Guide d'utilisation}
+
+\subsection{Installation de l'environnement}
+
+\begin{lstlisting}[language=bash, caption=Mise en place de l'environnement virtuel]
+# Créer et activer l'environnement virtuel
+python -m venv venv
+source venv/bin/activate        # Linux / Mac
+# venv\Scripts\Activate.ps1    # Windows PowerShell
+
+# Installer les dépendances
+pip install -r requirements.txt
+\end{lstlisting}
+
+\subsection{Entraînement des modèles}
+
+\begin{lstlisting}[language=bash, caption=Commande d'entraînement]
+python src/train_model.py \
+  --data data/raw/retail_customers_COMPLETE_CATEGORICAL.csv \
+  --split-output-dir data/train_test \
+  --model-output models/best_churn_pipeline.joblib \
+  --report-output reports/model_metrics.json \
+  --target Churn \
+  --pca-variance 0.95
+\end{lstlisting}
+
+\textbf{Sorties générées :}
+\begin{itemize}[noitemsep]
+    \item \texttt{data/train\_test/X\_train.csv}, \texttt{X\_test.csv}, \texttt{y\_train.csv}, \texttt{y\_test.csv}
+    \item \texttt{models/best\_churn\_pipeline.joblib}
+    \item \texttt{reports/model\_metrics.json}
+\end{itemize}
+
+\subsection{Lancement de l'API}
+
+\begin{lstlisting}[language=bash, caption=Démarrage du serveur Flask]
+python app/app.py
+# Serveur disponible sur http://127.0.0.1:5000
+\end{lstlisting}
+
+\subsection{Prédiction en Python}
+
+\begin{lstlisting}[language=Python, caption=Utilisation de ChurnPredictor]
+from src.predict import ChurnPredictor
+
+predictor = ChurnPredictor(model_path="models/best_churn_pipeline.joblib")
+payload = {
+    "Recency": 85,
+    "Frequency": 5,
+    "MonetaryTotal": 120.0,
+    "Country": "France",
+    "Gender": "F",
+}
+result = predictor.predict(payload)
+print(result)
+# {"churn_prediction": 1, "churn_probability": 0.78}
+\end{lstlisting}
+
+% ─────────────────────────────────────────────────────────────
+%  10. CONCLUSION
+% ─────────────────────────────────────────────────────────────
+\section{Conclusion}
+
+Ce projet a permis de construire un pipeline de machine learning complet et robuste pour la prédiction du churn dans un contexte e-commerce retail. Les principaux apports sont :
+
+\begin{itemize}[noitemsep]
+    \item Un pipeline de prétraitement \textbf{leakage-safe} entièrement encapsulé dans scikit-learn, reproductible et déployable directement en production.
+    \item Une ingénierie de features s'appuyant sur les insights de l'analyse exploratoire (suppression de variables corrélées, VIF, feature engineering RFM).
+    \item La prise en compte du déséquilibre de classes via SMOTE et les poids de classes dans les classifieurs.
+    \item Un système de comparaison automatique de quatre modèles (Régression Logistique, Random Forest, KNN, XGBoost) avec sélection du meilleur sur la base du F1-score.
+    \item Une API Flask prête à l'emploi permettant d'intégrer le modèle dans n'importe quelle application web ou mobile.
+\end{itemize}
+
+\begin{tcolorbox}[title=Pistes d'amélioration]
+\begin{enumerate}[noitemsep]
+    \item Ajouter une \textbf{validation croisée} (StratifiedKFold) pour obtenir des estimations de métriques plus robustes.
+    \item Implémenter une \textbf{recherche d'hyperparamètres} (GridSearchCV / Optuna).
+    \item Versionner les modèles avec un outil comme \textbf{MLflow} pour le suivi des expériences.
+    \item Ajouter un \textbf{pipeline CI/CD} (GitHub Actions) pour automatiser les tests.
+    \item Remplacer le serveur de développement Flask par un serveur WSGI de production (\textbf{Gunicorn}).
+    \item Ajouter une \textbf{validation des entrées} (Pydantic) à l'API pour sécuriser les requêtes.
+\end{enumerate}
+\end{tcolorbox}
+
+\end{document}
